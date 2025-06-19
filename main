@@ -1,0 +1,43 @@
+import time
+import serial
+import sqlite3
+import adafruit_fingerprint
+
+# Setup serial and fingerprint sensor
+uart = serial.Serial("/dev/ttyUSB0", baudrate=57600, timeout=1)
+finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
+
+# Setup SQLite DB
+conn = sqlite3.connect("attendance.db")
+cur = conn.cursor()
+cur.execute('''CREATE TABLE IF NOT EXISTS attendance (id INTEGER, timestamp TEXT)''')
+conn.commit()
+
+def get_fingerprint():
+    print("Waiting for fingerprint...")
+    while finger.get_image() != adafruit_fingerprint.OK:
+        pass
+    if finger.image_2_tz(1) != adafruit_fingerprint.OK:
+        return False
+    if finger.finger_search() != adafruit_fingerprint.OK:
+        return False
+    return True
+
+def log_attendance(finger_id):
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute("INSERT INTO attendance (id, timestamp) VALUES (?, ?)", (finger_id, timestamp))
+    conn.commit()
+    print(f"[LOGGED] ID: {finger_id} at {timestamp}")
+
+while True:
+    try:
+        if get_fingerprint():
+            print("Fingerprint match found!")
+            log_attendance(finger.finger_id)
+        else:
+            print("No match found.")
+        time.sleep(2)
+    except KeyboardInterrupt:
+        break
+
+conn.close()
